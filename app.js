@@ -19,17 +19,19 @@ let compareWinrateChartInstance = null;
 let compareGoalsChartInstance = null;
 
 // Initialize Application
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
     // Set custom Chart.js defaults for dark theme
-    Chart.defaults.color = '#9ca3af';
-    Chart.defaults.font.family = "'Outfit', sans-serif";
-    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(10, 13, 20, 0.95)';
-    Chart.defaults.plugins.tooltip.borderColor = 'rgba(255, 255, 255, 0.1)';
-    Chart.defaults.plugins.tooltip.borderWidth = 1;
-    Chart.defaults.plugins.tooltip.titleColor = '#fff';
-    Chart.defaults.plugins.tooltip.bodyColor = '#f3f4f6';
-    Chart.defaults.plugins.tooltip.padding = 10;
-    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.font.family = "'Outfit', sans-serif";
+        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(10, 13, 20, 0.95)';
+        Chart.defaults.plugins.tooltip.borderColor = 'rgba(255, 255, 255, 0.1)';
+        Chart.defaults.plugins.tooltip.borderWidth = 1;
+        Chart.defaults.plugins.tooltip.titleColor = '#fff';
+        Chart.defaults.plugins.tooltip.bodyColor = '#f3f4f6';
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    }
     
     // Parse data from FIFA_DATA (loaded from data.js)
     lucasMatches = parsePlayerData('Lucas');
@@ -37,7 +39,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Set initial view
     switchPlayer('Lucas');
-});
+}
+
+// Run initialization immediately if DOM is ready, otherwise wait for event
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 // Parse Excel rows into clean objects
 function parsePlayerData(playerName) {
@@ -303,6 +312,10 @@ function renderKPIs() {
 
 // Render dynamic charts (Doughnut & Line)
 function renderCharts() {
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js no está cargado. Se omitirá el renderizado de gráficos.');
+        return;
+    }
     // 1. Outcome Doughnut Chart
     const wins = activeMatches.filter(m => m.outcome === 'Victoria').length;
     const draws = activeMatches.filter(m => m.outcome === 'Empate').length;
@@ -745,7 +758,12 @@ function renderComparisonView() {
         </div>
     `;
     
-    // Render Comparative Charts
+    // Render Comparative Charts (only if Chart is loaded)
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js no está cargado. Se omitirá el renderizado de gráficos comparativos.');
+        return;
+    }
+
     const ctxWinrate = document.getElementById('compare-winrate-chart').getContext('2d');
     if (compareWinrateChartInstance) compareWinrateChartInstance.destroy();
     
