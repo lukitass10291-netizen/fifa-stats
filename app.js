@@ -3,7 +3,8 @@
 // Global State
 let currentPlayer = 'Lucas';
 let selectedSeason = 'All';
-let searchQuery = '';
+let teamQuery = '';
+let rivalQuery = '';
 let currentPage = 1;
 const itemsPerPage = 10;
 
@@ -145,9 +146,11 @@ function switchPlayer(player) {
         
         // Reset filter states for new player
         selectedSeason = 'All';
-        searchQuery = '';
+        teamQuery = '';
+        rivalQuery = '';
         currentPage = 1;
-        document.getElementById('match-search-input').value = '';
+        document.getElementById('team-search-input').value = '';
+        document.getElementById('rival-search-input').value = '';
         
         renderSeasonFilters();
         updateDashboardData();
@@ -199,8 +202,9 @@ function filterBySeason(season) {
     updateDashboardData();
 }
 
-function handleSearch(query) {
-    searchQuery = query.toLowerCase().trim();
+function handleFilterChange() {
+    teamQuery = document.getElementById('team-search-input').value.toLowerCase().trim();
+    rivalQuery = document.getElementById('rival-search-input').value.toLowerCase().trim();
     currentPage = 1;
     updateDashboardData();
 }
@@ -215,13 +219,13 @@ function updateDashboardData() {
         if (selectedSeason !== 'All' && match.season !== selectedSeason) {
             return false;
         }
-        // Search filter
-        if (searchQuery !== '') {
-            const teamMatch = match.team.toLowerCase().includes(searchQuery);
-            const rivalMatch = match.rival.toLowerCase().includes(searchQuery);
-            const outcomeMatch = match.outcome.toLowerCase().includes(searchQuery);
-            const scoreMatch = match.score.toLowerCase().includes(searchQuery);
-            return teamMatch || rivalMatch || outcomeMatch || scoreMatch;
+        // My Team filter
+        if (teamQuery !== '' && !match.team.toLowerCase().includes(teamQuery)) {
+            return false;
+        }
+        // Rival filter
+        if (rivalQuery !== '' && !match.rival.toLowerCase().includes(rivalQuery)) {
+            return false;
         }
         return true;
     });
