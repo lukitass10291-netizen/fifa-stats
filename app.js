@@ -237,23 +237,27 @@ function updateDashboardData() {
     renderMatchLog();
 }
 
-// Calculate and render KPI Cards
+// Calculate and render KPI & Highlight Cards
 function renderKPIs() {
-    const container = document.getElementById('kpi-grid-container');
-    container.innerHTML = '';
+    const mainContainer = document.getElementById('kpi-grid-container');
+    const highlightsContainer = document.getElementById('highlights-grid-container');
+    
+    mainContainer.innerHTML = '';
+    if (highlightsContainer) highlightsContainer.innerHTML = '';
     
     const total = activeMatches.length;
     
     if (total === 0) {
-        container.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">No hay partidos que coincidan con los filtros.</div>`;
+        mainContainer.innerHTML = `<div class="no-data" style="grid-column: 1 / -1;">No hay partidos que coincidan con los filtros.</div>`;
+        if (highlightsContainer) {
+            highlightsContainer.innerHTML = `<div class="no-data" style="grid-column: 1 / -1; padding: 1.5rem;">Sin datos suficientes para calcular récords.</div>`;
+        }
         return;
     }
     
     const wins = activeMatches.filter(m => m.outcome === 'Victoria').length;
     const draws = activeMatches.filter(m => m.outcome === 'Empate').length;
     const losses = activeMatches.filter(m => m.outcome === 'Derrota').length;
-    
-    const winRate = ((wins / total) * 100).toFixed(1);
     
     // Points efficiency (Standard Football Efficiency)
     const pointsEarned = activeMatches.reduce((sum, m) => sum + m.points, 0);
@@ -265,12 +269,9 @@ function renderKPIs() {
     const diff = gf - gc;
     const diffSign = diff > 0 ? '+' : '';
     
-    const avgGf = (gf / total).toFixed(1);
-    const avgGc = (gc / total).toFixed(1);
-    
     // Find highest division reached in this dataset
     const divisions = activeMatches.map(m => m.division).filter(d => !isNaN(d) && d > 0);
-    const bestDiv = divisions.length > 0 ? Math.min(...divisions) : '-'; // 1 is best, 10 is worst
+    const bestDiv = divisions.length > 0 ? Math.min(...divisions) : '-';
     
     const kpiData = [
         {
@@ -310,8 +311,176 @@ function renderKPIs() {
             <div class="kpi-value">${kpi.value}</div>
             <div class="kpi-footer">${kpi.footer}</div>
         `;
-        container.appendChild(card);
+        mainContainer.appendChild(card);
     });
+
+    // Render Highlights if container exists
+    if (highlightsContainer) {
+        // 1. Best Win
+        const winMatches = activeMatches.filter(m => m.outcome === 'Victoria');
+        let bestWin = null;
+        if (winMatches.length > 0) {
+            bestWin = winMatches.reduce((best, curr) => {
+                const diffCurr = curr.gf - curr.gc;
+                const diffBest = best.gf - best.gc;
+                if (diffCurr > diffBest) return curr;
+                if (diffCurr === diffBest && curr.gf > best.gf) return curr;
+                return best;
+            }, winMatches[0]);
+        }
+
+        // 2. Worst Loss
+        const lossMatches = activeMatches.filter(m => m.outcome === 'Derrota');
+        let worstLoss = null;
+        if (lossMatches.length > 0) {
+            worstLoss = lossMatches.reduce((worst, curr) => {
+                const diffCurr = curr.gc - curr.gf;
+                const diffWorst = worst.gc - worst.gf;
+                if (diffCurr > diffWorst) return curr;
+                if (diffCurr === diffWorst && curr.gc > worst.gc) return curr;
+                return worst;
+            }, lossMatches[0]);
+        }
+
+        // 3. Streaks
+        let maxWinStreak = 0;
+        let curWinStreak = 0;
+        let maxUnbeatenStreak = 0;
+        let curUnbeatenStreak = 0;
+
+        activeMatches.forEach(m => {
+            if (m.outcome === 'Victoria') {
+                curWinStreak++;
+                if (curWinStreak > maxWinStreak) maxWinStreak = curWinStreak;
+            } else {
+                curWinStreak = 0;
+            }
+
+            if (m.outcome !== 'Derrota') {
+                curUnbeatenStreak++;
+                if (curUnbeatenStreak > maxUnbeatenStreak) maxUnbeatenStreak = curUnbeatenStreak;
+            } else {
+                curUnbeatenStreak = 0;
+            }
+        });
+
+        // 4. Most Defeated Rival (Víctima Preferida)
+        const rivalWinsMap = {};
+        activeMatches.forEach(m => {
+            if (!rivalWinsMap[m.rival]) {
+                rivalWinsMap[m.rival] = { rival: m.rival, wins: 0, draws: 0, losses: 0, total: 0 };
+            }
+            rivalWinsMap[m.rival].total++;
+            if (m.outcome === 'Victoria') rivalWinsMap[m.rival].wins++;
+            else if (m.outcome === 'Empate') rivalWinsMap[m.rival].draws++;
+            else if (m.outcome === 'Derrota') rivalWinsMap[m.rival].losses++;
+        });
+
+        const rivalList = Object.values(rivalWinsMap);
+        let topVictim = null;
+        if (rivalList.length > 0) {
+            topVictim = rivalList.reduce((best, curr) => {
+                if (curr.wins > best.wins) return curr;
+                if (curr.wins === best.wins && curr.total > best.total) return curr;
+                return best;
+            }, rivalList[0]);
+            if (topVictim.wins === 0) topVictim = null;
+        }
+
+        // 5. Crazier Match (Highest Goal Game)
+        let crazierMatch = activeMatches.reduce((max, curr) => {
+            return (curr.gf + curr.gc) > (max.gf + max.gc) ? curr : max;
+        }, activeMatches[0]);
+
+        // 6. Equipo Amuleto (Best team played with)
+        const teamMap = {};
+        activeMatches.forEach(m => {
+            if (!teamMap[m.team]) {
+                teamMap[m.team] = { team: m.team, points: 0, total: 0, wins: 0 };
+            }
+            teamMap[m.team].total++;
+            teamMap[m.team].points += m.points;
+            if (m.outcome === 'Victoria') teamMap[m.team].wins++;
+        });
+        const teamList = Object.values(teamMap).filter(t => t.total >= 2);
+        let bestTeam = null;
+        if (teamList.length > 0) {
+            bestTeam = teamList.reduce((best, curr) => {
+                const effCurr = curr.points / (curr.total * 3);
+                const effBest = best.points / (best.total * 3);
+                if (effCurr > effBest) return curr;
+                if (effCurr === effBest && curr.total > best.total) return curr;
+                return best;
+            }, teamList[0]);
+        } else if (Object.keys(teamMap).length > 0) {
+            bestTeam = Object.values(teamMap)[0];
+        }
+
+        const highlightCards = [
+            {
+                title: 'Mejor Victoria',
+                value: bestWin ? bestWin.score : '-',
+                footer: bestWin ? `vs ${bestWin.rival} &bull; T${bestWin.season} (${bestWin.team})` : 'Sin victorias aún',
+                accent: 'accent-win',
+                valueColor: 'var(--color-win)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"></path></svg>`
+            },
+            {
+                title: 'Peor Derrota',
+                value: worstLoss ? worstLoss.score : '-',
+                footer: worstLoss ? `vs ${worstLoss.rival} &bull; T${worstLoss.season} (${worstLoss.team})` : 'Sin derrotas aún',
+                accent: 'accent-loss',
+                valueColor: 'var(--color-loss)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`
+            },
+            {
+                title: 'Mejor Racha',
+                value: `${maxWinStreak} Victorias`,
+                footer: `Invicto: ${maxUnbeatenStreak} partidos seguidos`,
+                accent: 'accent-amber',
+                valueColor: 'var(--color-draw)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"></path></svg>`
+            },
+            {
+                title: 'Víctima Preferida',
+                value: topVictim ? topVictim.rival : '-',
+                footer: topVictim ? `${topVictim.wins} victorias (${topVictim.wins}V - ${topVictim.draws}E - ${topVictim.losses}D)` : 'Sin rival preferido',
+                accent: 'accent-purple',
+                valueColor: 'var(--color-secondary)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>`
+            },
+            {
+                title: 'Partido Más Loco',
+                value: crazierMatch ? crazierMatch.score : '-',
+                footer: crazierMatch ? `vs ${crazierMatch.rival} &bull; T${crazierMatch.season} (${crazierMatch.gf + crazierMatch.gc} goles)` : '-',
+                accent: 'accent-win',
+                valueColor: 'var(--color-primary)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`
+            },
+            {
+                title: 'Equipo Amuleto',
+                value: bestTeam ? bestTeam.team : '-',
+                footer: bestTeam ? `Efectividad: ${((bestTeam.points / (bestTeam.total * 3)) * 100).toFixed(0)}% (${bestTeam.wins}V / ${bestTeam.total}PJ)` : '-',
+                accent: 'accent-purple',
+                valueColor: 'var(--color-secondary)',
+                icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`
+            }
+        ];
+
+        highlightCards.forEach(cardData => {
+            const card = document.createElement('div');
+            card.className = `kpi-card ${cardData.accent}`;
+            card.innerHTML = `
+                <div class="kpi-header">
+                    <span>${cardData.title}</span>
+                    <div class="kpi-icon-container">${cardData.icon}</div>
+                </div>
+                <div class="kpi-value" style="font-size: 1.5rem; color: ${cardData.valueColor};">${cardData.value}</div>
+                <div class="kpi-footer">${cardData.footer}</div>
+            `;
+            highlightsContainer.appendChild(card);
+        });
+    }
 }
 
 // Render dynamic charts (Doughnut & Line)
